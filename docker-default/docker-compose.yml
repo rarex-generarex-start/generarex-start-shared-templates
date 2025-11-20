@@ -1,0 +1,87 @@
+services:
+  app:
+    image: ghcr.io/rarex-docker-images/php-8.2:latest
+    restart: unless-stopped
+    working_dir: /var/www/
+    volumes:
+      - ${PROJECT_PATH}:/var/www
+    profiles:
+      - app
+    networks:
+      - local
+
+  app-debug:
+    image: ghcr.io/rarex-docker-images/php-8.2:latest-debug
+    restart: unless-stopped
+    working_dir: /var/www/
+    environment:
+      PHP_IDE_CONFIG: "serverName=Docker"
+    volumes:
+      - ${PROJECT_PATH}:/var/www
+    profiles:
+      - debug
+    networks:
+      - local
+
+  app-command:
+    image: ghcr.io/rarex-docker-images/php-8.2:latest
+    volumes:
+      - ${PROJECT_PATH}:/var/www
+    #    depends_on:
+    #      - app
+    working_dir: /var/www/
+    command: >
+      sh -c "composer install
+             php artisan migrate --force"
+    profiles:
+      - install
+    networks:
+      - local
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    volumes:
+      - ${PROJECT_PATH}:/var/www
+      - ./nginx/conf.d:/etc/nginx/conf.d
+    #    ports:
+    #      - "8080:80"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-nginx.rule=Host(`${COMPOSE_PROJECT_NAME}.localhost`) || Host(`${COMPOSE_PROJECT_NAME}.${HOSTNAME}`)"
+    profiles:
+      - app
+    networks:
+      - proxy
+      - local
+
+  vite:
+    image: node:current-alpine
+    restart: unless-stopped
+    working_dir: /home/node/app
+    volumes:
+      - ${PROJECT_PATH}:/home/node/app
+    #    ports:
+    #      - "5173:5173"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.${COMPOSE_PROJECT_NAME}-vite.rule=Host(`vite-${COMPOSE_PROJECT_NAME}.localhost`) || Host(`vite-${COMPOSE_PROJECT_NAME}.${HOSTNAME}`)"
+      - "traefik.http.services.${COMPOSE_PROJECT_NAME}-vite.loadbalancer.server.port=5173"
+    environment:
+      NODE_ENV: development
+    command: >
+      sh -c "export NODE_OPTIONS=--openssl-legacy-provider
+             npm install && npm run dev"
+    profiles:
+      - app
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true
+    name: proxy
+  local:
+    driver: bridge

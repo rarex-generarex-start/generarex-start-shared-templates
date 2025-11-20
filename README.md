@@ -1,0 +1,1 @@
+# generarex-start-shared-templates
